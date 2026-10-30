@@ -96,12 +96,20 @@ public class Compiler(Tree tree)
         return index;
     }
 
-    private static Instruction OperatorToInstruction(TokenType op) => op switch
+    private static Instruction OperatorToInstruction(TokenType op)
     {
-        TokenType.Plus => new AddInstruction(),
-        TokenType.Minus => new SubInstruction(),
-        TokenType.Star => new MulInstruction(),
-        TokenType.Slash => new DivInstruction(),
-        _ => throw new InvalidOperationException($"unexpected operator {op}")
-    };
+        switch (op)
+        {
+            case TokenType.Plus:
+                return new AddInstruction();
+            case TokenType.Minus:
+                return new SubInstruction();
+            case TokenType.Star:
+                return new MulInstruction();
+            case TokenType.Slash:
+                return new DivInstruction();
+            default:
+                throw new InvalidOperationException($"unexpected operator {op}");
+        }
+    }
 }

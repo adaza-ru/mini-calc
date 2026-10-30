@@ -3,20 +3,34 @@ public class ConstantFolder(Tree tree)
     public Tree Fold() =>
         new(tree.Statements.Select(FoldStatement).ToList());
 
-    private static Statement FoldStatement(Statement statement) => statement switch
+    private static Statement FoldStatement(Statement statement)
     {
-        VarDeclarationStatement s => s with { Value = FoldExpression(s.Value) },
-        AssignmentStatement s => s with { Value = FoldExpression(s.Value) },
-        PrintStatement s => s with { Expression = FoldExpression(s.Expression) },
-        ExpressionStatement s => s with { Expression = FoldExpression(s.Expression) },
-        _ => throw new ArgumentOutOfRangeException(nameof(statement))
-    };
+        switch (statement)
+        {
+            case VarDeclarationStatement s:
+                return s with { Value = FoldExpression(s.Value) };
 
-    private static Expression FoldExpression(Expression expression) => expression switch
+            case AssignmentStatement s:
+                return s with { Value = FoldExpression(s.Value) };
+
+            case PrintStatement s:
+                return s with { Expression = FoldExpression(s.Expression) };
+
+            case ExpressionStatement s:
+                return s with { Expression = FoldExpression(s.Expression) };
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(statement));
+        }
+    }
+
+    private static Expression FoldExpression(Expression expression)
     {
-        BinaryExpression binary => FoldBinary(binary),
-        _ => expression
-    };
+        if (expression is BinaryExpression binary)
+            return FoldBinary(binary);
+                
+        return expression;
+    }
 
     private static Expression FoldBinary(BinaryExpression binary)
     {
@@ -27,14 +41,19 @@ public class ConstantFolder(Tree tree)
         {
             switch (binary.Operator)
             {
-                case TokenType.Plus: return new NumberLiteralExpression(a + b);
-                case TokenType.Minus: return new NumberLiteralExpression(a - b);
-                case TokenType.Star: return new NumberLiteralExpression(a * b);
+                case TokenType.Plus:
+                    return new NumberLiteralExpression(a + b);
+
+                case TokenType.Minus:
+                    return new NumberLiteralExpression(a - b);
+
+                case TokenType.Star:
+                    return new NumberLiteralExpression(a * b);
+
                 case TokenType.Slash when b != 0 && !(a == int.MinValue && b == -1):
                     return new NumberLiteralExpression(a / b);
             }
         }
-
         return binary with { Left = left, Right = right };
     }
 }
