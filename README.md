@@ -34,6 +34,7 @@ print result + 10;
 - Variable declaration (`var`), reassignment and `print`
 - Errors reported as `file:line:column`, for both syntax and semantic problems
 - Debug flags to inspect every stage: tokens, syntax tree and bytecode
+- Optional constant folding (`--fold`) that evaluates constant expressions at compile time
 - Meaningful exit codes, so it can be used from scripts
 
 ## Requirements
@@ -45,7 +46,7 @@ print result + 10;
 Save the program above as `example.mini` and run:
 
 ```
-dotnet run -- example.calc
+dotnet run -- example.mini
 ```
 
 Or build it once and run the binary:
@@ -63,6 +64,7 @@ Options:
   --tokens      print the token stream
   --ast         print the syntax tree
   --bytecode    print the generated instructions
+  --fold        fold constant expressions before compiling
   -h, --help    show this help
 ```
 
@@ -125,6 +127,7 @@ The source goes through four stages:
 |---|---|---|
 | Lexing | `Scanner` | Turns text into tokens, each carrying its line and column |
 | Parsing | `Parser` | Recursive descent parser, one method per grammar rule, that builds the syntax tree |
+| Optimization (optional) | `ConstantFolder` | With `--fold`, builds a new tree where constant expressions are already evaluated |
 | Compilation | `Compiler` | Walks the tree and emits stack-machine instructions; resolves variables to register indices |
 | Execution | `VirtualMachine` | Runs the instructions with an operand stack and 256 registers |
 
@@ -135,27 +138,49 @@ Design notes:
 - **The tree keeps tokens.** Variable nodes store the original token, so the compiler can still report the exact line and column of an undeclared or duplicated variable.
 - **Keywords are a dictionary.** The scanner reads a whole word and looks it up in a `Keywords` table, which makes adding a keyword a one-line change.
 - **Statements leave the stack clean.** Expression statements are followed by a `Pop` and `print` consumes its value, so the stack is empty between statements.
+- **Folding returns a new tree.** AST nodes are immutable records, so the folder builds a modified copy instead of changing the original, and it works bottom-up: operands are folded before the operation that uses them.
 
 ### Inspecting the pipeline
 
-For the example above, `--bytecode` prints:
+The debug flags show what each stage produces. For the program `print 1 + 2 * 3;`:
 
 ```
-   0  LoadIntInstruction { Value = 3 }
-   1  StoreVarInstruction { Index = 0 }
-   2  LoadIntInstruction { Value = 1 }
-   3  LoadIntInstruction { Value = 2 }
-   4  LoadVarInstruction { Index = 0 }
-   5  MulInstruction { }
-   6  AddInstruction { }
-   7  StoreVarInstruction { Index = 1 }
-   8  LoadVarInstruction { Index = 1 }
-   9  LoadIntInstruction { Value = 10 }
-  10  AddInstruction { }
-  11  PrintInstruction { }
+$ dotnet run -- basic.mini --ast --bytecode
+ 
+Debug Info - AST:
+PrintStatement { Expression = BinaryExpression { Left = NumberLiteralExpression { Value = 1 }, Operator = Plus, Right = BinaryExpression { Left = NumberLiteralExpression { Value = 2 }, Operator = Star, Right = NumberLiteralExpression { Value = 3 } } } }
+ 
+Debug Info - Instructions:
+   0  LoadIntInstruction { Value = 1 }
+   1  LoadIntInstruction { Value = 2 }
+   2  LoadIntInstruction { Value = 3 }
+   3  MulInstruction { }
+   4  AddInstruction { }
+   5  PrintInstruction { }
+ 
+7
 ```
 
-`--tokens` and `--ast` work the same way for the earlier stages.
+`--tokens` works the same way for the first stage.
+
+### Constant folding
+ 
+With `--fold`, constant expressions are evaluated at compile time. The same program now compiles to two instructions instead of six:
+ 
+```
+$ dotnet run -- basic.mini --ast --bytecode --fold
+ 
+Debug Info - AST:
+PrintStatement { Expression = NumberLiteralExpression { Value = 7 } }
+ 
+Debug Info - Instructions:
+   0  LoadIntInstruction { Value = 7 }
+   1  PrintInstruction { }
+ 
+7
+```
+ 
+Folding works bottom-up: `2 * 3` becomes `6` first, and then `1 + 6` becomes `7`. Division by zero and `int.MinValue / -1` are deliberately not folded, so those errors still happen at runtime exactly as without the flag.
 
 ## Error messages
 
@@ -191,6 +216,7 @@ example.calc: runtime error: division by zero
 | Errors | Generic exceptions | `CompileException` with line and column, and `RuntimeException` |
 | Variables | Redeclaring a variable corrupted register indices | Duplicate and undeclared variables are compile errors; limit of 256 |
 | Expression statements | Value left on the stack | Value popped; output is explicit with `print` |
+| Optimization | None | Optional constant folding with `--fold` |
 | Running | Script | `.csproj` project with a CLI, debug flags and exit codes |
 
 ## Known limitations
@@ -200,6 +226,7 @@ example.calc: runtime error: division by zero
 - Assignment is a statement, not an expression, so `a = b = 3;` is not valid.
 - Identifiers are lowercase only, and there is a single global scope.
 - At most 256 variables.
+- Constant folding only folds expressions whose operands are literals. It doesn't propagate variable values, so `var x = 3; print x + 1;` is left as is.
 - There are no types other than `int`, no control flow and no functions.
 
 ## What I learned
@@ -214,8 +241,14 @@ example.calc: runtime error: division by zero
 - **Semantic checks:** detecting undeclared and duplicated variables at compile time.
 - **Code generation:** compiling a tree into bytecode for a stack machine, and mapping variables to registers.
 - **Virtual machines:** executing instructions with an operand stack, and keeping the stack balanced between statements.
+- **Optimization:** constant folding as an optional pass over the AST, evaluating constant expressions at compile time without changing the behavior of the program (errors like division by zero still happen at runtime).
+- **Tree traversal order:** why compiling and folding visit children before their parent (post-order), and why that produces valid stack-machine code.
 
-- **C# and .NET:** Creating and organizing a project with the `dotnet` CLI and a `.csproj` file.
+**C# and .NET:**
+- Creating and organizing a project with the `dotnet` CLI and a `.csproj` file.
+- Records, abstract record hierarchies and pattern matching with `switch`.
+- Immutable records and `with` expressions to build a transformed copy of a tree, and LINQ (`Select`, `ToList`) to transform lists.
+- Primary constructors, collection expressions, ranges and local functions.
 
 ## Credits
 

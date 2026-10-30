@@ -2,16 +2,17 @@
     Usage: MiniCalc <file> [options]
 
     Options:
-      --tokens      print the token stream
-      --ast         print the syntax tree
-      --bytecode    print the generated instructions
-      -h, --help    show this help
+        --tokens      print the token stream
+        --ast         print the syntax tree
+        --bytecode    print the generated instructions
+        --fold        fold constant expressions before compiling
+        -h, --help    show this help
 
     If any of --tokens, --ast or --bytecode is given, the program is
     compiled but not executed.
     """;
 
-string[] knownFlags = ["--tokens", "--ast", "--bytecode"];
+string[] knownFlags = ["--tokens", "--ast", "--bytecode", "--fold"];
 
 if (args.Length == 0 || args.Contains("-h") || args.Contains("--help"))
 {
@@ -50,13 +51,19 @@ try
     List<Token> tokens = new Scanner(source).Scan();
     if (flags.Contains("--tokens"))
     {
+        Console.WriteLine("\nDebug Info - Tokens:");
         foreach (var token in tokens)
             Console.WriteLine(token);
     }
 
     var tree = new Parser(tokens).Parse();
+
+    if (flags.Contains("--fold"))
+        tree = new ConstantFolder(tree).Fold();
+
     if (flags.Contains("--ast"))
     {
+        Console.WriteLine("\nDebug Info - AST:");
         foreach (var statement in tree.Statements)
             Console.WriteLine(statement);
     }
@@ -64,12 +71,13 @@ try
     List<Instruction> instructions = new Compiler(tree).Compile();
     if (flags.Contains("--bytecode"))
     {
+        Console.WriteLine("\nDebug Info - Instructions:");
         for (var i = 0; i < instructions.Count; i++)
             Console.WriteLine($"{i,4}  {instructions[i]}");
     }
 
     if (flags.Count > 0)
-        return 0;
+        Console.WriteLine();
 
     new VirtualMachine(instructions).Run();
     return 0;
